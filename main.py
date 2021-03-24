@@ -1,88 +1,143 @@
 import socket
 import sys
 import re
+import logging
 
-# Required constants
+# Required variables
 serverPort = 4367
 serverName = ''
 message = 'whatamess'
 LogFilename = ''
 
 # Required execution flags
-isIPCorrect = False
-isPortCorrect = False
+checkIP = True
+checkPort = True
 isServer = False
-isTCP = False
+isTCP = True
 isUDP = False
+TCPflag = False
+UDPflag = False
 isLogSc = False
 isLogFile = False
 
+# Logger object
+logger = logging.getLogger(__name__)
 
-def debug():
-    check_flags()
-    print(isIPCorrect, isPortCorrect, isServer, isTCP, isUDP, isLogSc, isLogFile)
+
+def logging_config():
+    global isLogSc
+    global isLogFile
+    logger.setLevel(logging.INFO)
+    if not isLogSc and not isLogFile:
+        isLogSc = True
+        isLogFile = False
+    if isLogSc:
+        c_handler = logging.StreamHandler()
+        c_handler.setLevel(logging.INFO)
+        c_format = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
+        c_handler.setFormatter(c_format)
+        logger.addHandler(c_handler)
+    if isLogFile:
+        f_handler = logging.FileHandler(LogFilename)
+        f_handler.setLevel(logging.INFO)
+        f_format = logging.Formatter('%(asctime)s:%(levelname)s:%(name)s:%(message)s')
+        f_handler.setFormatter(f_format)
+        logger.addHandler(f_handler)
 
 
 def check_flags():
+    # Required because of incorrect working some 'if' statements
     global isLogFile
     global isLogSc
     global isUDP
     global isTCP
     global isServer
-    global isPortCorrect
-    global isIPCorrect
     global LogFilename
     global serverPort
     global serverName
+    global checkIP
+    global checkPort
+    global TCPflag
+    global UDPflag
 
     argvarr = sys.argv[:]
-    # print(argvarr)
-    if re.match(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', argvarr[1]) and len(argvarr[1]) <= 15:
-        isIPCorrect = True
-        print("IP is correct")
-        # LOG - IP format checking: correct
-    else:
-        print("IP is incorrect")
-        # LOG - IP format checking: error
 
-    # ADD CHECK IF PORT IS INTEGER
-    if 1024 <= int(argvarr[2]) <= 49151:
-        isPortCorrect = True
-        print("Port is correct")
-        # LOG - Port format checking: correct
-    else:
-        print("Port is incorrect")
-        # LOG - Port format checking: error
+    if len(argvarr) == 1:
+        logging.critical('Run format: python <filename.py> <host> <port>'
+                         ' [-s] [-t | -u] [-o | -f <file>]')
+        sys.exit(1)
 
     for i in argvarr[3:]:
         if isLogFile:
             if re.match('-', i):
-                print('Expected filename, not flag!')
-                # LOG - Expected filename, not flag!
+                logging.error('Expected filename after -f, not flag!')
+                sys.exit(1)
             LogFilename = i
             isLogFile = False  # Чтобы больше не проверялось в цикле
-            # LOG - Log filename: on
         if i == '-s':
             isServer = True
-            # LOG - Server Mode: on
-        if i == '-t':
-            isTCP = True
-            # LOG - TCP Mode: on
-        if i == '-u':
-            isUDP = True
-            # LOG - UDP Mode: on
-        if i == '-o':
+        elif i == '-u':
+            UDPflag = True
+        elif i == '-t':
+            TCPflag = True
+        elif i == '-o':
             isLogSc = True
-            # LOG - Log in stdout: on
-        if i == '-f':
+        elif i == '-f':
             isLogFile = True
-            # LOG - Log in file: on
+        elif i == '-ip':
+            checkIP = False
+        elif i == '-port':
+            checkPort = False
+
+    if isLogFile:
+        logging.error('Missing log filename')
+        sys.exit(1)
 
     if LogFilename != '':
         isLogFile = True
 
-    if (isTCP and isUDP) or (not isTCP and not isUDP):
-        print("Incorrect TCP/UDP mode")
+    if TCPflag and UDPflag:
+        logging.error("TCP and UDP can't be used at the same time")
+        sys.exit(1)
+    elif TCPflag:
+        isTCP = True
+        isUDP = False
+    elif UDPflag:
+        isTCP = False
+        isUDP = True
+
+    if checkIP:
+        try:
+            if re.match(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', argvarr[1]) and len(argvarr[1]) <= 15:
+                pass
+            else:
+                logging.error('IP format checking failed. If you are sure that the entered IP is correct, '
+                              'run the program with the -ip flag')
+                sys.exit(1)
+        except IndexError:
+            logging.critical('IP address not found')
+            sys.exit(1)
+        except Exception:
+            logging.critical('Exception info:', exc_info=True)
+            sys.exit(1)
+
+    if checkPort:
+        try:
+            if 1024 <= int(argvarr[2]) <= 49151:
+                pass
+            else:
+                logging.error('Port checking failed. If you are sure that the entered port is correct, '
+                              'run the program with the -port flag')
+                sys.exit(1)
+        except IndexError:
+            logging.critical('Port not found')
+            sys.exit(1)
+        except ValueError:
+            logging.critical('Port should be integer value')
+            sys.exit(1)
+        except Exception:
+            logging.critical('Exception info:', exc_info=True)
+            sys.exit(1)
 
 
 def udp_client():
@@ -104,4 +159,10 @@ def udp_server():
             serverSocket.sendto(clientAddress.encode('utf-8'), clientAddress)
 
 
-debug()
+if __name__ == '__main__':
+    check_flags()
+    logging_config()
+    print(isServer, isTCP, isUDP, isLogSc, isLogFile, checkIP, checkPort)
+    logger.info('It works!')
+
+
